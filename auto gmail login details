@@ -1,0 +1,36 @@
+import undetected_chromedriver as uc
+import time
+
+
+
+from pywinauto.findwindows import find_element
+
+from selenium.webdriver.common.by import By
+
+username="surendrasamudrala939@gmail.com"
+password1="surendra@234A"
+
+login = uc.Chrome()
+link = ("https://accounts.google.com/v3/signin/identifier?checkedDomains=youtube&continue=https%3A%2F%2Fmail.google.com%2Fmail&dsh=S872948886%3A1743232929650066&flowEntry=AccountChooser&flowName=GlifWebSignIn&hl=en&ifkv=AXH0vVtiqStWbhZ_DeVT8uCHInyZ4Qvj6AGktdxZnsaHvb0eEgoQmy0kFPjmJXPvDnvFpLgQLeBvKg&pstMsg=1&ddm=1")
+login.get(link)
+time.sleep(5)
+
+try:
+    username_box = login.find_element(By.XPATH, "//*[@id='identifierId']")
+    username_box.send_keys(username)
+    time.sleep(2)
+    button1 = login.find_element(By.XPATH,"//*[@id='identifierNext']")
+    button1.click()
+    time.sleep(5)
+    password_box = login.find_element(By.XPATH, "//*[@id='password']/div[1]/div/div[1]/input[1]")
+    password_box.send_keys(password1)
+    time.sleep(2)
+    button2 = login.find_element(By.XPATH,"//*[@id='passwordNext']")
+    button2.click()
+
+
+
+
+except Exception as e:
+    print(f"Error occurred: {'Xpath is changed or choosed path is incorrect'}")
+
