@@ -51,12 +51,13 @@ while scroll_attempts < max_scrolls:
             profile_url = link.get_attribute("href")
             profile_name = link.text.strip() or "Unknown"
 
+
             if profile_url not in connections:
                 connections.add((profile_name, profile_url))
                 print(f" - Collected: {profile_name} | {profile_url}")
 
         # Scroll down
-        driver.execute_script("window.scrollBy(0, 1000);")
+        driver.execute_script("window.scrollBy(0, 1200);")
         time.sleep(random.uniform(5, 10))  # Small random delay
 
         # Check if new content is loaded
@@ -67,6 +68,8 @@ while scroll_attempts < max_scrolls:
         last_height = new_height
 
         scroll_attempts += 1
+        connection_count = len(connections)
+        connection=set()
 
     except Exception as e:
         print(f"⚠️ Error while scrolling: {e}")
