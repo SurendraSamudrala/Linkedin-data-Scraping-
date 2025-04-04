@@ -5,79 +5,71 @@ import os
 import time
 import random
 
-# Paste your LinkedIn session cookie value here and sesson id is changable it is not permenant id 
+# LinkedIn session cookie  here session ID chnages every login expired or until logout 
 session_ID = 'AQEDAUdRXeMAyZ1sAAABlf9I2L0AAAGWI1VcvVYACTCfjT2TQtCOEGh9EMlF3qPywYiIHA5szgNUUV-tM-JS8CZXYNgdiVBm_QA2G29u-bsVBgaSj3K8Iv2GK16F3Lc19-Vl5pbF1dok9u2X51qe8vH1'
 
-# # Start Undetected Chrome
 driver = uc.Chrome()
-driver.get("https://www.linkedin.com")  # Load any LinkedIn page to set cookie
+driver.get("https://www.linkedin.com")
 time.sleep(5)
 
-# Inject the session cookie
+# Set session cookie
 driver.add_cookie({
     "name": "li_at",
     "value": session_ID,
     "domain": ".linkedin.com",
     "path": "/",
-
     "httpOnly": True
 })
 
-# Reload the page to apply cookie and simulate login
+# Load feed to apply cookie
 driver.get("https://www.linkedin.com/feed/")
-time.sleep(10)
+time.sleep(5)
+print("✅ Logged in!")
 
-print("✅ Logged in using session cookie!")
-
-message = driver.find_element(By.XPATH, "//*[@id='global-nav']/div/nav/ul/li[4]/a")
-click_message = message.click()
-print(click_message)
-time.sleep(10)
-
-# Go to My Connections Page
+# Go to Connections
 driver.get("https://www.linkedin.com/mynetwork/invite-connect/connections/")
-time.sleep(10)
+time.sleep(8)
 
+# Scroll target
+container = driver.find_element(By.XPATH, "//*[@id='root']/div[1]/div[3]/div[2]/main")
 
-# Collect Connections
 connections = set()
-max_scrolls = 100
-scroll_attempts = 0
-last_height = 0
+last_count = 0
+no_change_count = 0
 
-while scroll_attempts < max_scrolls:
-    try:
-        profile_links = driver.find_elements(By.XPATH, "//a[contains(@href, '/in/')]")
+while True:
+    # Extract all current visible connections
+    profile_links = driver.find_elements(By.XPATH, "//a[contains(@href, '/in/')]")
 
-        for link in profile_links:
-            profile_url = link.get_attribute("href")
-            profile_name = link.text.strip() or "Unknown"
-            if profile_url and (profile_name, profile_url) not in connections:
-                connections.add((profile_name, profile_url))
-                print(f" - Collected: {profile_name} | {profile_url}")
+    for link in profile_links:
+        profile_url = link.get_attribute("href")
+        profile_name = link.text.strip() or "Unknown"
+        if profile_url and (profile_name, profile_url) not in connections:
+            connections.add((profile_name, profile_url))
+            print(f"✅ Collected: {profile_name} | {profile_url}")
 
-        # Scroll down
-        driver.execute_script("window.scrollBy(0, 1200);")
-        time.sleep(random.uniform(5, 10))
+    # Scroll the container
+    driver.execute_script("arguments[0].scrollBy(0, 1000);", container)
+    time.sleep(random.uniform(2.5, 4.5))  # Let new content load
 
-        # Check scroll height to determine if new content loaded
-        new_height = driver.execute_script("return document.body.scrollHeight")
-        if new_height == last_height:
-            print("✅ Reached the end of the page.")
-            break
-        last_height = new_height
+    # Check if we're making progress
+    if len(connections) == last_count:
+        no_change_count += 1
+    else:
+        no_change_count = 0
+        last_count = len(connections)
 
-        scroll_attempts += 1
-
-    except Exception as e:
-        print(f"⚠️ Error while scrolling: {e}")
+    # Stop after 3 scrolls with no new connections
+    if no_change_count >= 3:
+        print("✅ No new connections loaded after multiple scrolls. Stopping.")
         break
 
-# Save to CSV
+print(f"\n🔍 Total connections collected: {len(connections)}")
+
+# Save results
 file_path = os.path.join(os.path.expanduser("~"), "Desktop", "LinkedIn_Connections.csv")
 df = pd.DataFrame(list(connections), columns=["Profile Name", "Profile Link"])
 df.to_csv(file_path, index=False, encoding='utf-8')
-print(f"✅ Data saved to {file_path} successfully!")
+print(f"📁 Saved to {file_path}")
 
-# Close browser
 driver.quit()
