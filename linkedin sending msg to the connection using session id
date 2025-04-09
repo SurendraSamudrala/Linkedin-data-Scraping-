@@ -1,0 +1,111 @@
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import random
+
+# LinkedIn session cookie
+session_ID = 'AQEDAUdRXeMD34r8AAABlg9QY4QAAAGWM1znhFYAcdIuW9nWdZ3ladRINvO-YzhYMSc1ly9w_xamEU8uPpoY2UgEJFsxPyCaxSLhryLk3PRuhAHRgSPNjPNWyiCio4HvrgJApQom0NG5gKGZLyItfjt5'
+
+# Custom message to send
+custom_message = "Hi there! Just reaching out to reconnect. Hope you're doing well!"
+
+# Set up undetected Chrome
+options = uc.ChromeOptions()
+options.add_argument("--start-maximized")
+driver = uc.Chrome(options=options)
+
+# Login to LinkedIn using session cookie
+driver.get("https://www.linkedin.com")
+time.sleep(5)
+driver.add_cookie({
+    "name": "li_at",
+    "value": session_ID,
+    "domain": ".linkedin.com",
+    "path": "/",
+    "httpOnly": True
+})
+driver.get("https://www.linkedin.com/feed/")
+time.sleep(5)
+print("✅ Logged in!")
+
+# Visit connections page
+driver.get("https://www.linkedin.com/mynetwork/invite-connect/connections/")
+time.sleep(10)
+
+# Scroll and collect connections
+scroll_pause = 3
+connections = set()
+last_height = driver.execute_script("return document.body.scrollHeight")
+retries = 0
+
+while True:
+    profiles = driver.find_elements(By.XPATH, "//a[contains(@href, '/in/')]")
+    for link in profiles:
+        url = link.get_attribute("href")
+        name = link.text.strip() or "Unknown"
+        if url and ('/in/' in url):
+            connections.add((name, url))
+
+    driver.execute_script("window.scrollBy(0, 1000);")
+    time.sleep(scroll_pause)
+
+    new_height = driver.execute_script("return document.body.scrollHeight")
+    if new_height == last_height:
+        retries += 1
+    else:
+        retries = 0
+        last_height = new_height
+    if retries >= 3:
+        break
+
+print(f"✅ Total connections collected: {len(connections)}")
+
+# Messaging function
+def send_message(profile_url, message):
+    try:
+        driver.get(profile_url)
+        time.sleep(random.uniform(4, 6))
+
+        wait = WebDriverWait(driver, 10)
+
+        # Click the Message button
+        try:
+            message_button = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, "//button[contains(@aria-label, 'Message')]")))
+            driver.execute_script("arguments[0].click();", message_button)
+        except:
+            print(f"⚠️ No message button found for {profile_url}")
+            return
+
+        time.sleep(2)
+
+        # Find message text box
+        try:
+            msg_box = wait.until(EC.presence_of_element_located((By.XPATH, "//div[@role='textbox']")))
+            msg_box.click()
+            msg_box.send_keys(message)
+        except:
+            print(f"⚠️ Couldn't find message box on {profile_url}")
+            return
+
+        # Click Send
+        try:
+            send_btn = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, "//button[contains(@aria-label, 'Send now')]")))
+            send_btn.click()
+            print(f"📨 Message sent to {profile_url}")
+        except:
+            print(f"⚠️ Send button not found for {profile_url}")
+
+        time.sleep(random.uniform(2.5, 5))
+
+    except Exception as e:
+        print(f"❌ Error messaging {profile_url}: {e}")
+
+# Send messages to all collected connections
+for name, url in connections:
+    send_message(url, custom_message)
+
+driver.quit()
