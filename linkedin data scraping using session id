@@ -5,7 +5,7 @@ import os
 import time
 import random
 
-# LinkedIn session cookie  here session ID chnages every login expired or until logout 
+# LinkedIn session cookie  here session ID chnages every login expired or until logout and if the page is not able to load then also change the session ID
 session_ID = 'AQEDAUdRXeMAyZ1sAAABlf9I2L0AAAGWI1VcvVYACTCfjT2TQtCOEGh9EMlF3qPywYiIHA5szgNUUV-tM-JS8CZXYNgdiVBm_QA2G29u-bsVBgaSj3K8Iv2GK16F3Lc19-Vl5pbF1dok9u2X51qe8vH1'
 
 driver = uc.Chrome()
