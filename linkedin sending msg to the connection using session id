@@ -83,7 +83,8 @@ def send_message_to_profile(name, profile_url, message):
         try:
             msg_box = wait.until(EC.presence_of_element_located((
                 By.XPATH, "/html/body/div[6]/div[4]/div/aside[1]/div[2]/div[1]/div[2]/div/form/div[3]/div[1]/div/div[1]"
-            )))
+            ))) or wait.until(EC.presence_of_element_located((
+                By.XPATH, "//*[@id='msg-form-ember307']/div[3]/div[1]/div/div[1]")))
             msg_box.click()
             msg_box.send_keys(message)
         except:
@@ -100,7 +101,16 @@ def send_message_to_profile(name, profile_url, message):
         except:
             print(f"⚠️ Send button not found for {name}")
 
-        time.sleep(random.uniform(3, 6))
+        try:
+            close_btn = wait.until(EC.element_to_be_clickable((
+                By.XPATH, "//*[@id='ember303']"
+            )))
+            close_btn.click()
+            print(f"🧹 Closed message window for {name}")
+        except:
+            print(f"⚠️ Could not close message window for {name}")
+
+        time.sleep(3)
 
     except Exception as e:
         print(f"❌ Error messaging {name} at {profile_url}: {e}")
