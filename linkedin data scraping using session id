@@ -66,10 +66,16 @@ while True:
 
 print(f"\n🔍 Total connections collected: {len(connections)}")
 
-# Save results
+# Save results in csv
 file_path = os.path.join(os.path.expanduser("~"), "Desktop", "LinkedIn_Connections.csv")
 df = pd.DataFrame(list(connections), columns=["Profile Name", "Profile Link"])
 df.to_csv(file_path, index=False, encoding='utf-8')
+print(f"📁 Saved to {file_path}")
+
+# Save results in xlsx
+file_path = os.path.join(os.path.expanduser("~"), "Desktop", "LinkedIn_Connections.xlsx")
+df = pd.DataFrame(list(connections), columns=["Profile Name", "Profile Link"])
+df.to_excel(file_path, index=False, engine='openpyxl')
 print(f"📁 Saved to {file_path}")
 
 driver.quit()
