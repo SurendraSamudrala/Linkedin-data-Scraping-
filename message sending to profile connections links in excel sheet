@@ -1,0 +1,101 @@
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import pandas as pd
+import time
+import random
+import os
+from openpyxl import load_workbook
+
+
+# LinkedIn session cookie it is changeable if the page is broked we need to change the session link.
+session_ID = 'AQEDAUdRXeMBdvh5AAABlhk8IRcAAAGWPUilF00APnk9_xfaCjL9z6ee_40-LM4JCuvoKX2amYUYniM6C3msbuF-SivapHHwO6H5Valm8rKthTSqTRNkQb5iJm0e4vqEv5GBbB90oib0nPpDVSdjV245'
+
+# Read custom message template from Excel file
+message_file_path = os.path.join(os.path.expanduser("~"), "Desktop", "message.xlsx")
+wb = load_workbook(message_file_path)
+ws = wb.active
+custom_template = str(ws["A1"].value).strip()
+
+print("✅ Loaded message using openpyxl:", custom_template)
+
+# Load Excel with hyperlinks (column B = Profile Link)
+excel_path = os.path.join(os.path.expanduser("~"), "Desktop", "LinkedIn_Connections.xlsx")
+df = pd.read_excel(excel_path)
+
+# Create name and link pairs
+connections = [(row['Profile Name'], row['Profile Link']) for index, row in df.iterrows()]
+
+# Setup Chrome
+options = uc.ChromeOptions()
+options.add_argument("--start-maximized")
+driver = uc.Chrome(options=options)
+
+# Login using session cookie
+driver.get("https://www.linkedin.com")
+time.sleep(5)
+driver.add_cookie({
+    "name": "li_at",
+    "value": session_ID,
+    "domain": ".linkedin.com",
+    "path": "/",
+    "httpOnly": True
+})
+driver.get("https://www.linkedin.com/feed/")
+time.sleep(5)
+print("✅ Logged in!")
+
+# Message sending function
+def send_message_to_profile(name, profile_url, message):
+    try:
+        driver.get(profile_url)
+        time.sleep(random.uniform(4, 6))
+        wait = WebDriverWait(driver, 10)
+
+        try:
+            message_button = wait.until(EC.element_to_be_clickable((
+                By.XPATH, "/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/section[1]/div[2]/div[3]/div/div[1]/button"
+            )))
+            driver.execute_script("arguments[0].click();", message_button)
+        except:
+            print(f"❌ No message button found for {name} ({profile_url})")
+            return
+
+        time.sleep(2)
+
+        try:
+            msg_box = wait.until(EC.presence_of_element_located((
+                By.XPATH, "/html/body/div[6]/div[4]/div/aside[1]/div[2]/div[1]/div[2]/div/form/div[3]/div[1]/div/div[1]"
+            ))) or wait.until(EC.presence_of_element_located((
+                By.XPATH, "//*[@id='msg-form-ember307']/div[3]/div[1]/div/div[1]"
+            )))
+            msg_box.click()
+            msg_box.send_keys(message)
+        except:
+            print(f"❌ Couldn't find message box for {name}")
+            return
+
+        try:
+            send_button = wait.until(EC.element_to_be_clickable((
+                By.XPATH, "/html/body/div[6]/div[4]/div/aside[1]/div[2]/div[1]/div[2]/div/form/footer/div[2]/div[1]/button"
+            )))
+            send_button.click()
+            print(f"✅ Message sent to {name}")
+        except:
+            print(f"❌ Send button not found for {name}")
+
+        time.sleep(random.uniform(2, 3))
+
+    except Exception as e:
+        print(f"❌ Error messaging {name} at {profile_url}: {e}")
+        time.sleep(3)
+
+# Loop through connections and send personalized messages
+for name, url in connections:
+    personalized_message = custom_template.replace("{name}", name)
+    send_message_to_profile(name, url, personalized_message)
+
+# Done
+driver.quit()
+print("✅ All done!")
