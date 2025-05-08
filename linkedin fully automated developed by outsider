@@ -1,0 +1,682 @@
+import time
+import random
+import pandas as pd
+from DrissionPage import ChromiumPage
+from colorama import init, Fore, Style
+import smtplib
+from email.mime.text import MIMEText
+import getpass
+import os
+import re
+from DataRecorder import Recorder
+import csv
+import smtplib
+from email.message import EmailMessage
+
+
+# Initialize colorama for colored CLI output
+
+
+def display_banner():
+    banner = r"""                          
+
+
+
+
+  _      _       _            _ _____          _____        __ _                           __      ____ 
+ | |    (_)     | |          | |_   _|        / ____|      / _| |                          \ \    / /_ |
+ | |     _ _ __ | | _____  __| | | |  _ __   | (___   ___ | |_| |___      ____ _ _ __ ___   \ \  / / | |
+ | |    | | '_ \| |/ / _ \/ _` | | | | '_ \   \___ \ / _ \|  _| __\ \ /\ / / _` | '__/ _ \   \ \/ /  | |
+ | |____| | | | |   <  __/ (_| |_| |_| | | |  ____) | (_) | | | |_ \ V  V / (_| | | |  __/    \  /   | |
+ |______|_|_| |_|_|\_\___|\__,_|_____|_| |_| |_____/ \___/|_|  \__| \_/\_/ \__,_|_|  \___|     \/    |_|
+
+
+    LinkedIn Automation Bot v1.0 (Logged-In Session)
+        """
+    print("\033[1;36m" + banner + "\033[0m")
+
+
+page = ChromiumPage()
+
+
+# Navigate to LinkedIn and log in (update with your credentials)
+# page.get('https://www.linkedin.com/login')
+
+
+# ||===================================== Feature 1 =====================================||
+
+
+def Hiring_Post():
+    # Initialize browser session
+    page = ChromiumPage()
+
+    # Navigate to LinkedIn and log in (update with your credentials)
+    page.get('https://www.linkedin.com/login')
+
+    # Perform search
+    try:
+        search_button = page.ele('xpath://button[@aria-label="Click to start a search"]', timeout=10)
+        page.wait.ele_displayed(search_button, timeout=10)
+        search_button.click(by_js=True)
+
+        query = input("\033[1;32m Enter your search query: \033[0m")
+        print(query)
+        search_input = page.ele('xpath://div[@id="global-nav-typeahead"]//input[@role="combobox"]', timeout=10)
+        search_input.input(query + '\n')
+        time.sleep(8)  # Wait for search results
+    except Exception as e:
+        print(f"Error performing search: {e}")
+        page.quit()
+        exit()
+
+    posts_data = []
+    processed_post_ids = set()
+
+    # Scroll to load initial posts and make "See all post results" button visible
+    print("Scrolling to load initial posts...")
+    for _ in range(1):
+        page.scroll.down(1500)
+        time.sleep(1)
+
+    # Check for "See all post results" button and click it
+    try:
+        see_all_button = page.ele(
+            'xpath://div[contains(@class, "search-results__cluster-bottom-banner")]//a[text()="See all post results"]',
+            timeout=10)
+        if see_all_button:
+            print("See all post results button found, clicking...")
+            button_href = see_all_button.attr('href')
+            if button_href and button_href.startswith('https://www.linkedin.com'):
+                print(f"Navigating to button href: {button_href}")
+                page.get(button_href)
+                page.wait.doc_loaded()
+                time.sleep(8)
+            else:
+                see_all_button.click(by_js=True)
+                page.wait.doc_loaded()
+                time.sleep(8)
+            for _ in range(10):
+                page.scroll.down(1500)
+                page.scroll.to_bottom()
+                time.sleep(1.5)
+        else:
+            print("See all post results button not found, proceeding with visible posts...")
+    except Exception as e:
+        print(f"Error finding See all post results button: {e}")
+        print("Proceeding with visible posts...")
+
+    while True:
+        post_elements = page.eles('tag:div@data-urn:urn:li:activity:', timeout=5)
+        if not post_elements:
+            print("No post elements found, debugging page content...")
+            login_prompt = page.ele('tag:div@id=login', timeout=2) or page.ele('tag:button@text():Sign in', timeout=2)
+            if login_prompt:
+                print("Login prompt detected, please ensure the script is logged in")
+            potential_posts = page.eles('tag:div@data-urn:urn:li:', timeout=5) or \
+                              page.eles('tag:div@data-id:urn:li:', timeout=5) or \
+                              page.eles('tag:div@class=feed-shared-update-v2', timeout=5)
+            print(f"Found {len(potential_posts)} potential post elements")
+            if potential_posts:
+                print(f"Sample post HTML: {potential_posts[0].html[:500]}...")
+
+        print(f"Found {len(post_elements)} post elements in this iteration")
+
+        for post in post_elements:
+            post_id = post.attr('data-urn')
+            if post_id in processed_post_ids:
+                continue
+            processed_post_ids.add(post_id)
+
+            post_details = {}
+
+            try:
+                name_element = post.ele('tag:span@class=update-components-actor__title', timeout=2)
+                if name_element:
+                    name_span = name_element.ele('tag:span@dir=ltr').ele('tag:span@aria-hidden=true')
+                    post_details['poster_name'] = name_span.text.strip() if name_span else 'Unknown'
+                    print(f"Name found: {post_details['poster_name']}")
+                else:
+                    post_details['poster_name'] = 'Unknown'
+                    print("Name element not found")
+            except Exception as e:
+                post_details['poster_name'] = 'Unknown'
+                print(f"Error extracting poster name: {e}")
+
+            try:
+                # Locate the sub-description span using XPath
+                date_element = post.ele('xpath://span[contains(@class, "update-components-actor__sub-description")]',
+                                        timeout=5)
+
+                if date_element:
+                    # Try to find the nested span with aria-hidden="true"
+                    date_span = date_element.ele('xpath:.//span[@aria-hidden="true"]', timeout=3)
+                    if date_span:
+                        date_text = date_span.text.strip()
+                    # print(f"Raw date text (nested span): {date_text}")
+                    else:
+                        # Fallback to parent element text
+                        date_text = date_element.text.strip()
+                    # print(f"Raw date text (parent span): {date_text}")
+
+                    # Use regex to match date formats like "3w", "11mo", "4d"
+                    date_match = re.search(r'^\d+(?:w|mo|d)\b', date_text)
+                    if date_match:
+                        post_details['post_date'] = date_match.group(0)
+                        print(f"Date found (regex): {post_details['post_date']}")
+                    else:
+                        # Fallback: Split by "•" and validate
+                        date_parts = date_text.split('•')
+                        potential_date = date_parts[0].strip() if date_parts else date_text
+                        print(f"Potential date (after split): {potential_date}")
+                        if re.match(r'^\d+(?:w|mo|d)$', potential_date):
+                            post_details['post_date'] = potential_date
+                            print(f"Date found (fallback): {post_details['post_date']}")
+                        else:
+                            post_details['post_date'] = 'Unknown'
+                        # print(f"No valid date found in: {date_text}")
+                else:
+                    post_details['post_date'] = 'Unknown'
+                # print("Date element not found")
+                # print(f"Post HTML snippet: {post.html[:200]}...")
+            except Exception as e:
+                post_details['post_date'] = 'Unknown'
+                # print(f"Error extracting post date: {e}")
+                # print(f"Post HTML snippet: {post.html[:200]}...")
+
+            try:
+                url_element = post.ele('tag:a@class=update-components-actor__meta-link', timeout=2)
+                if not url_element:
+                    url_element = post.ele('tag:a@href:/in/', timeout=2)
+                post_details['poster_url'] = url_element.attr('href') if url_element else 'Unknown'
+                print(f"URL found: {post_details['poster_url']}")
+            except Exception as e:
+                post_details['post_date'] = 'Unknown'
+                print(f"Error extracting poster URL: {e}")
+
+            try:
+                see_more_button = post.ele('tag:button@text():more', timeout=1) or \
+                                  post.ele('tag:button@class=feed-shared-inline-show-more-text__see-more-less-toggle',
+                                           timeout=1) or \
+                                  post.ele('tag:span@text():See more', timeout=1)
+                if see_more_button:
+                    see_more_button.click(by_js=True)
+                    time.sleep(1.5)
+
+                content_element = post.ele('xpath://div[contains(@class, "update-components-text")]//span[@dir="ltr"]',
+                                           timeout=2)
+                if content_element:
+                    content_text = content_element.text.strip()
+                    content_text = re.sub(r'\s+', ' ', content_text)
+                    content_text = re.sub(r'hashtag\s+', '', content_text)
+                    post_details['post_content'] = content_text if content_text else 'No content available'
+                    print(f"Content found: {post_details['post_content'][:50]}...")
+                else:
+                    post_details['post_content'] = 'No content available'
+                    print("Content element not found")
+                    description_area = post.ele('tag:div@class=feed-shared-update-v2', timeout=2)
+                    print(
+                        f"Description area HTML: {description_area.html[:300] if description_area else 'Not found'}...")
+            except Exception as e:
+                post_details['post_content'] = 'No content available'
+                print(f"Error extracting post content: {e}")
+
+            posts_data.append(post_details)
+
+        # Save scraped data to CSV after processing posts
+        if posts_data:
+            df = pd.DataFrame(posts_data, columns=['poster_name', 'post_date', 'poster_url', 'post_content'])
+            df.insert(0, 'Post Number', range(1, len(df) + 1))
+            df.columns = ['Post Number', 'Poster Name', 'Post Date', 'Poster URL', 'Post Content']
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            csv_path = os.path.join(script_dir, 'linkedin_posts.csv')
+            df.to_csv(csv_path, index=False, encoding='utf-8')
+            print(f"Exported {len(posts_data)} posts to linkedin_posts.csv")
+        else:
+            print("No posts found to export to CSV in this iteration")
+
+        # Try to find the "Show more results" button with controlled scrolling
+        show_more_button = None
+        max_scroll_attempts = 3
+        for attempt in range(max_scroll_attempts):
+            print(f"Scroll attempt {attempt + 1}/{max_scroll_attempts} to find Show more results button...")
+            for _ in range(10):
+                page.scroll.down(1000)  # Precise scrolling
+                time.sleep(1.5)
+            time.sleep(3)  # Wait for button to be interactable
+            show_more_button = page.ele(
+                'xpath://button[contains(@class, "scaffold-finite-scroll__load-button") and .//span[text()="Show more results"]]',
+                timeout=8)
+            if show_more_button:
+                print("Show more results button found, clicking...")
+                try:
+                    show_more_button.click(by_js=True)
+                    page.wait.doc_loaded()
+                    time.sleep(8)
+                    for _ in range(15):
+                        page.scroll.to_bottom()
+                        time.sleep(2)
+                    break
+                except Exception as e:
+                    print(f"Error clicking Show more results button: {e}")
+                    show_more_button = None
+            else:
+                print("Show more results button not found in this attempt...")
+
+        if show_more_button:
+            continue
+        else:
+            print("No Show more results button found after scrolling attempts, checking for new posts...")
+            for _ in range(10):
+                page.scroll.to_bottom()
+                time.sleep(2)
+            new_post_elements = page.eles('tag:div@data-urn:urn:li:activity:', timeout=5)
+            print(f"Found {len(new_post_elements)} post elements after final scrolling")
+            if len(new_post_elements) > len(post_elements):
+                print("New posts found, continuing...")
+                continue
+            print("No new posts or Show more results button found, stopping...")
+            break
+
+
+# |||===================================== Feature 2  =====================================|||
+
+
+def send_connection_requests():
+    page = ChromiumPage()
+
+    time.sleep(5)
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.join(script_dir, 'profiles.csv')
+    with open(csv_path, 'r') as file:
+        reader = csv.reader(file)
+        next(reader)  # Skip header
+
+        custom_note = input("Please Enter Your Custom Message (max 200 characters): ")
+        while True:
+            # custom_note = input("Please Enter Your Custom Message (max 200 characters): ")
+            if len(custom_note) <= 200:
+                break
+        for row in reader:
+            profile_url = row[0]
+            try:
+                # Navigate to profile with human-like delay
+                page.get(profile_url)
+                time.sleep(random.uniform(2.5, 4.0))  # Random delay to mimic human navigation
+
+                # Check for the "Connect" button directly
+                connect_button = page.ele(
+                    'xpath://button[contains(@aria-label, "Invite") and contains(@aria-label, "to connect") and contains(@class, "artdeco-button--primary")]',
+                    timeout=5)
+                if connect_button:
+                    time.sleep(random.uniform(1.0, 2.5))  # Mimic human hesitation
+                    connect_button.click(by_js=True)
+
+                    # Proceed to "Add a note" logic
+                    add_note_button = page.ele('xpath://button[@aria-label="Add a note"]', timeout=5)
+                    if add_note_button:
+                        time.sleep(random.uniform(0.5, 1.2))  # Slight delay for realism
+                        add_note_button.click(by_js=True)
+                        time.sleep(random.uniform(1.0, 2.0))  # Wait for note input field
+                    else:
+
+                        continue
+
+                    # Input custom note
+                    note_input = page.ele('xpath://textarea[@name="message"]', timeout=5)
+                    if note_input:
+                        time.sleep(random.uniform(0.3, 0.8))  # Mimic typing delay
+                        note_input.input(custom_note)
+
+                        time.sleep(random.uniform(0.5, 1.0))  # Wait for input to register
+                    else:
+
+                        continue
+
+                    # Click "Send invitation" button
+                    send_button = page.ele('xpath://button[@aria-label="Send invitation"]', timeout=5)
+                    if send_button:
+                        time.sleep(random.uniform(1.5, 3.0))  # Delay before sending
+                        send_button.click(by_js=True)
+
+                    else:
+
+                        continue
+                else:
+
+                    more_button = page.ele('xpath://button[@aria-label="More actions" and @type="button"]', timeout=5)
+                    if more_button:
+                        time.sleep(random.uniform(0.5, 1.5))  # Mimic hesitation
+                        more_button.click(by_js=True)
+                        print(f"Clicked 'More actions' for {profile_url}")
+
+                        # Check for "Connect" button in the dropdown
+                        connect_button_dropdown = page.ele(
+                            'xpath://div[@role="button" and contains(@aria-label, "Invite") and contains(@aria-label, "connect")]',
+                            timeout=5)
+                        if connect_button_dropdown:
+                            time.sleep(random.uniform(1.0, 2.5))  # Random pause before clicking
+                            connect_button_dropdown.click(by_js=True)
+                            print(f"Clicked 'Connect' from dropdown for {profile_url}")
+
+                            # Proceed to "Add a note" logic
+                            add_note_button = page.ele('xpath://button[@aria-label="Add a note"]', timeout=5)
+                            if add_note_button:
+                                time.sleep(random.uniform(0.5, 1.2))
+                                add_note_button.click(by_js=True)
+                                time.sleep(random.uniform(1.0, 2.0))
+                            else:
+
+                                continue
+
+                            note_input = page.ele('xpath://textarea[@name="message"]', timeout=5)
+                            if note_input:
+                                time.sleep(random.uniform(0.3, 0.8))
+                                note_input.input(custom_note)
+
+                                time.sleep(random.uniform(0.5, 1.0))
+                            else:
+
+                                continue
+
+                            send_button = page.ele('xpath://button[@aria-label="Send invitation"]', timeout=5)
+                            if send_button:
+                                time.sleep(random.uniform(1.5, 3.0))
+                                send_button.click(by_js=True)
+
+                            else:
+
+                                continue
+                        else:
+
+                            continue
+                    else:
+
+                        continue
+
+                # Random delay between profiles to mimic human pacing
+                time.sleep(random.uniform(3.0, 5.0))
+
+            except Exception as e:
+
+                continue
+
+
+# ||===================================== Feature 3  =====================================||
+
+
+def monitor_linkedin_messages():
+    page = ChromiumPage()
+    page.get('https://www.linkedin.com/messaging/?filter=unread')
+    time.sleep(5)
+
+    time.sleep(5)
+
+    processed_messages = set()
+    # input("\033[1;32m Enter the 16-character Gmail App Password: \033[0m")
+    sender_email = input("\033[1;32m Enter the sender's Gmail address (e.g., chawdharybilal.786@gmail.com): \033[0m")
+    recipient_email = input(
+        "\033[1;32m Enter the recipient's email address (e.g., helpdeskbizzkonn@gmail.com): \033[0m")
+    app_password = input("\033[1;32m Enter the 16-character Gmail App Password: \033[0m")
+
+    while True:
+        items = page.eles(
+            'xpath://ul[@class="list-style-none msg-conversations-container__conversations-list"]/li[contains(@class, "msg-conversation-listitem")]')
+        unread_messages = []
+
+        for item in items:
+            try:
+                snippet = item.ele('xpath://p[contains(@class, "msg-conversation-card__message-snippet--unread")]')
+                if snippet:
+                    name_ele = item.ele(
+                        'xpath://h3[contains(@class, "msg-conversation-listitem__participant-names")]//span[@class="truncate"]')
+                    name = name_ele.text if name_ele else 'Unknown'
+                    text = snippet.text
+                    timestamp = item.ele('xpath://time[contains(@class, "msg-conversation-listitem__time-stamp")]').text
+                    message_id = f"{name}_{text}_{timestamp}"
+
+                    if message_id not in processed_messages:
+                        unread_messages.append((name, text, timestamp))
+                        processed_messages.add(message_id)
+            except:
+                continue
+
+        if unread_messages:
+            msg = EmailMessage()
+            msg['Subject'] = 'New LinkedIn Messages Alert'
+            msg['From'] = sender_email
+            msg['To'] = recipient_email
+            body = ''
+            for name, text, timestamp in unread_messages:
+                body += f'From: {name}\nMessage: {text}\nTime: {timestamp}\n\n'
+            msg.set_content(body)
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                smtp.login(sender_email, app_password)
+                smtp.send_message(msg)
+            print('New Unread Messages Detected!')
+        else:
+            print('No new messages.')
+
+        time.sleep(60)
+        page.refresh()
+
+
+# ||===================================== Feature 4 =====================================||
+
+
+def scrape_linkedin_connections():
+    # Initialize browser
+    page = ChromiumPage()
+    page.get("https://www.linkedin.com/mynetwork/invite-connect/connections/")
+    page.wait.doc_loaded()
+    page.wait.ele_displayed('xpath://div[./a[contains(@href, "/in/") and @data-view-name="connections-profile"]]',
+                            timeout=10)
+    time.sleep(random.uniform(1, 2))
+
+    # # Scroll to load all connections
+    # seen_urls = set()  # Track unique connection URLs to avoid duplicates
+    stagnant_attempts = 0  # Track consecutive attempts with no new connections
+    max_stagnant_attempts = 5  # Stop after 5 stagnant attempts
+
+    print("Starting to load all connection profiles...")
+    while True:
+        try:
+            # # Get current connections
+            # current_connections = page.eles('xpath://div[./a[contains(@href, "/in/") and @data-view-name="connections-profile"]]')
+            # Check for "Load more" button
+            load_button = page.ele('xpath://button[.//span[contains(text(), "Load more")]]', timeout=2)
+            if not load_button:
+                print("No 'Load more' button and no new connections. Scrolling complete.")
+                break
+
+            if load_button:
+                # Click "Load more" button
+                load_button.click()
+                time.sleep(2)
+
+        except Exception as e:
+            print(f"Error during scrolling: {e}")
+            if not page.ele('xpath://button[.//span[contains(text(), "Load more")]]', timeout=2):
+                print("No 'Load more' button after error. Scrolling complete.")
+                break
+            stagnant_attempts += 1
+            if stagnant_attempts >= max_stagnant_attempts:
+                print(f"No progress after {max_stagnant_attempts} attempts post-error. Scrolling complete.")
+                break
+            time.sleep(random.uniform(1, 2))
+
+    # Scrape all connections after scrolling
+    connections_data = []
+    connection_blocks = page.eles('xpath://div[./a[contains(@href, "/in/") and @data-view-name="connections-profile"]]')
+    processed_urls = set()  # Track processed URLs to avoid duplicates
+
+    for block in connection_blocks:
+        try:
+            linkedin_url = block.ele(
+                'xpath:.//a[contains(@href, "/in/") and @data-view-name="connections-profile"]/@href').strip() if block.ele(
+                'xpath:.//a[contains(@href, "/in/") and @data-view-name="connections-profile"]') else "N/A"
+
+            # Skip if URL is already processed or invalid
+            if linkedin_url == "N/A" or linkedin_url in processed_urls:
+                continue
+
+            name = block.ele('xpath:.//p[a]/a[contains(@href, "/in/")]').text.strip() if block.ele(
+                'xpath:.//p[a]/a[contains(@href, "/in/")]') else "N/A"
+            title = block.ele(
+                'xpath:.//a[contains(@href, "/in/")]/ancestor::div[contains(@class, "cnuthtbs")]//p[not(a) and not(contains(text(), "connected on"))]').text.strip() if block.ele(
+                'xpath:.//a[contains(@href, "/in/")]/ancestor::div[contains(@class, "cnuthtbs")]//p[not(a) and not(contains(text(), "connected on"))]') else "N/A"
+            company = "N/A"
+            if " at " in title:
+                company = title.split(" at ")[-1].strip()
+            connection_date = block.ele(
+                'xpath:.//p[contains(translate(text(), "C", "c"), "connected")]').text.strip() if block.ele(
+                'xpath:.//p[contains(translate(text(), "C", "c"), "connected")]') else "N/A"
+
+            connections_data.append({
+                "Name": name,
+                "Title": title,
+                "Connection Date": connection_date,
+                "Company": company,
+                "LinkedIn URL": linkedin_url
+            })
+            processed_urls.add(linkedin_url)
+
+        except Exception as e:
+            print(f"Error processing connection: {e}")
+            continue
+
+    # Save to CSV
+    df = pd.DataFrame(connections_data)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.join(script_dir, "linkedin_connections.csv")
+    df.to_csv(csv_path, index=False)
+    print(f"Data saved to {csv_path}")
+    # Close browser
+    page.close()
+    return csv_path
+
+
+# gmail app password URL:
+# https://accounts.google.com/v3/signin/challenge/pwd?TL=AArrULQwdlI1cCTrLhHJbSfRSn9KfZMAxQtz4C0SnYS4E4TC5r9eKVZwCtRy6j9b&cid=2&continue=https%3A%2F%2Fmyaccount.google.com%2Fapppasswords&flowName=GlifWebSignIn&followup=https%3A%2F%2Fmyaccount.google.com%2Fapppasswords&ifkv=ASKV5MghZ6Q-YqGeOJmB2UrEdEIDuvpMqA87inGd9kK1iylNxUOw1yjdRVW57cBsNMtu4PeUFTUGPw&osid=1&rart=ANgoxcemEWYzX4u4kICzSTs6KN3pn_wNXhirVro5xliIc3H8e4PnArnOz5NdllHvny78KaVw4JJxloVOW6Ot9xB8AFcfc8llYhVy-pPKR9WR770CPKfAAoY&rpbg=1&service=accountsettings
+
+
+# ||===================================== Feature 5=====================================||
+
+
+def send_greetings():
+    page = ChromiumPage()
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.join(script_dir, 'contacts.csv')
+
+    try:
+        df = pd.read_csv(csv_path)
+        required_columns = ['Name', 'Profile_URL', 'Message']
+        if not all(col in df.columns for col in required_columns):
+            raise ValueError("CSV file must contain columns: Name, Profile_URL, Message")
+    except Exception as e:
+        print(f"Error reading CSV file: {e}")
+        page.quit()
+        exit()
+
+    if df.empty:
+        print("No contacts to send messages to.")
+        page.quit()
+        exit()
+
+    for index, row in df.iterrows():
+        name = row['Name']
+        profile_url = row['Profile_URL'].rstrip('/')
+        message = row['Message']
+
+        print(f"Sending message to {name} ({profile_url})...")
+        try:
+            messaging_url = f"{profile_url}"
+            page.get(messaging_url)
+            time.sleep(5)
+            # Click the Message button
+            message_button = page.ele(
+                'xpath://button[contains(@class, "artdeco-button") and .//span[text()="Message"]]')
+            if not message_button:
+                print(f"Could not find Message button for {profile_url}")
+
+            message_button.click(by_js=True)
+
+            message_box = page.ele(
+                'xpath://div[@contenteditable="true" and contains(@class, "msg-form__contenteditable") and @aria-label="Write a message…"]')
+
+            if not message_box:
+                print(f"Could not find message box for {profile_url}")
+
+            message_box.input(message)
+
+            send_button = page.ele('xpath://button[contains(@class, "msg-form__send-button") and text()="Send"]')
+            if send_button:
+                send_button.click()
+                time.sleep(2)
+
+            else:
+                print(f"Send button not found for {profile_url}")
+
+            close_button_css = 'button.msg-overlay-bubble-header__control.artdeco-button.artdeco-button--circle.artdeco-button--muted.artdeco-button--1.artdeco-button--tertiary.ember-view:has(svg use[href="#close-small"])'
+            close_button = page.ele(f'css:{close_button_css}', timeout=10)
+
+            if close_button:
+                print("Close button found!")
+                close_button.click()
+                print("Close button clicked successfully!")
+            else:
+                print("Close button not found with CSS selector!")
+
+
+        except Exception as e:
+            print(f"Error sending message to {profile_url}: {e}")
+        time.sleep(3)
+
+
+# ||===================================== Main =====================================||
+
+
+def main():
+    """Main function to run the LinkedIn Software."""
+    display_banner()
+
+    # Navigate to LinkedIn homepage to ensure session is active
+    # page.get("https://www.linkedin.com/feed/")
+    time.sleep(3)
+
+    # ||===================================== Main Menu =====================================||
+
+    while True:
+        menu = """
+        \033[1;33mMAIN MENU:\033[0m
+        1. Search Hiring Posts & Export
+        2. Send Connection Requests
+        3. Export Your Connections
+        4. MessagesMonitor Messages
+        5. Send Automatic GreetingsMonitor
+        6. Exit
+
+                """
+        print(menu)
+
+        choice = input("\033[1;32mEnter your choice (1-8): \033[0m")
+
+        if choice == "1":
+            Hiring_Post()
+        elif choice == "2":
+            send_connection_requests()
+        elif choice == "3":
+            scrape_linkedin_connections()
+        elif choice == "4":
+            monitor_linkedin_messages()
+        elif choice == "5":
+            send_greetings()
+        elif choice == "6":
+            print("Exiting LinkedIn Software v1...")
+            break
+        else:
+            print("Invalid choice. Please try again.")
+
+
+if __name__ == "__main__":
+    main()
